@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { db } from '@/db/database';
 import type { InventoryItem } from '@/types';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -29,59 +28,53 @@ export default function ItemFormDialog({ item, onClose }: Props) {
   const set = (key: string, value: any) => setForm(prev => ({ ...prev, [key]: value }));
 
   const handleSave = async () => {
-    // Validate with zod schema
-    const validation = inventoryItemSchema.safeParse({
-      name: form.name,
-      sku: form.sku,
-      category: form.category,
-      brand: form.brand,
-      specification: form.specification,
-      purchasePrice: form.purchasePrice,
-      sellingPrice: form.sellingPrice,
-      gstPercent: form.gstPercent,
-      currentStock: form.currentStock,
-      minStockLevel: form.minStockLevel,
-      unit: form.unit,
-      hsnCode: form.hsnCode,
-    });
+  const validation = inventoryItemSchema.safeParse({
+  name: form.name,
+  sku: form.sku,
+  category: form.category,
+  brand: form.brand,
+  specification: form.specification,
+  purchasePrice: form.purchasePrice,
+  sellingPrice: form.sellingPrice,
+  gstPercent: form.gstPercent,
+  currentStock: form.currentStock,
+  minStockLevel: form.minStockLevel,
+  unit: form.unit,
+  hsnCode: form.hsnCode,
+  });
 
-    if (!validation.success) {
-      const firstError = validation.error.errors[0];
-      return toast.error(firstError.message);
-    }
+   if (!validation.success) {
+   const firstError = validation.error.errors[0];
+   return toast.error(firstError.message);
+   }
 
-    const validatedData = validation.data;
+   try {
+	const payload = {
+	name: form.name,
+	sku: form.sku,
+	category: form.category,
+	brand: form.brand,
+	specification: form.specification,
+	unit: form.unit,
+	purchasePrice: form.purchasePrice,
+	sellingPrice: form.sellingPrice,
+	gstPercent: form.gstPercent,
+	currentStock: form.currentStock,
+	minStockLevel: form.minStockLevel,
+	};
+     if (item?.id) {
+  	await window.api.updateItem({ ...payload, id: item.id });
+  	toast.success("Item updated");
+	} else {
+  	await window.api.addItem(payload);
+  	toast.success("Item added");
+	}
+	onClose();
 
-    try {
-      if (item?.id) {
-        await db.items.update(item.id, { 
-          ...form,
-          name: validatedData.name,
-          brand: validatedData.brand,
-          specification: validatedData.specification,
-          updatedAt: new Date() 
-        });
-        toast.success('Item updated');
-      } else {
-        // Check duplicate SKU
-        const existing = await db.items.where('sku').equals(form.sku).first();
-        if (existing && existing.isActive) return toast.error('SKU already exists');
-        await db.items.add({ 
-          ...form, 
-          name: validatedData.name,
-          brand: validatedData.brand,
-          specification: validatedData.specification,
-          createdAt: new Date(), 
-          updatedAt: new Date(), 
-          isActive: true 
-        } as InventoryItem);
-        toast.success('Item added');
-      }
-      onClose();
-    } catch (e) {
-      toast.error('Failed to save item');
-    }
-  };
+  } catch (err) {
+toast.error("Failed to save item");
+}
+};
 
   return (
     <div className="fixed inset-0 z-50 bg-foreground/40 flex items-center justify-center p-4" onClick={onClose}>
