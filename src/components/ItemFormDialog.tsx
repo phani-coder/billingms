@@ -3,11 +3,7 @@ import { db } from '@/db/database';
 import type { InventoryItem } from '@/types';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
-
-interface Props {
-  item: InventoryItem | null;
-  onClose: () => void;
-}
+import { inventoryItemSchema, sanitizeInput } from '@/lib/validation';
 
 const defaultItem: Omit<InventoryItem, 'id'> = {
   name: '', sku: '', category: '', brand: '', specification: '',
@@ -22,24 +18,63 @@ const categories = [
   'Meters & Instruments', 'Transformers', 'Other'
 ];
 
+interface Props {
+  item: InventoryItem | null;
+  onClose: () => void;
+}
+
 export default function ItemFormDialog({ item, onClose }: Props) {
   const [form, setForm] = useState(item ? { ...item } : { ...defaultItem });
 
   const set = (key: string, value: any) => setForm(prev => ({ ...prev, [key]: value }));
 
   const handleSave = async () => {
-    if (!form.name.trim()) return toast.error('Item name is required');
-    if (!form.sku.trim()) return toast.error('SKU is required');
+    // Validate with zod schema
+    const validation = inventoryItemSchema.safeParse({
+      name: form.name,
+      sku: form.sku,
+      category: form.category,
+      brand: form.brand,
+      specification: form.specification,
+      purchasePrice: form.purchasePrice,
+      sellingPrice: form.sellingPrice,
+      gstPercent: form.gstPercent,
+      currentStock: form.currentStock,
+      minStockLevel: form.minStockLevel,
+      unit: form.unit,
+      hsnCode: form.hsnCode,
+    });
+
+    if (!validation.success) {
+      const firstError = validation.error.errors[0];
+      return toast.error(firstError.message);
+    }
+
+    const validatedData = validation.data;
 
     try {
       if (item?.id) {
-        await db.items.update(item.id, { ...form, updatedAt: new Date() });
+        await db.items.update(item.id, { 
+          ...form,
+          name: validatedData.name,
+          brand: validatedData.brand,
+          specification: validatedData.specification,
+          updatedAt: new Date() 
+        });
         toast.success('Item updated');
       } else {
         // Check duplicate SKU
         const existing = await db.items.where('sku').equals(form.sku).first();
         if (existing && existing.isActive) return toast.error('SKU already exists');
-        await db.items.add({ ...form, createdAt: new Date(), updatedAt: new Date(), isActive: true } as InventoryItem);
+        await db.items.add({ 
+          ...form, 
+          name: validatedData.name,
+          brand: validatedData.brand,
+          specification: validatedData.specification,
+          createdAt: new Date(), 
+          updatedAt: new Date(), 
+          isActive: true 
+        } as InventoryItem);
         toast.success('Item added');
       }
       onClose();

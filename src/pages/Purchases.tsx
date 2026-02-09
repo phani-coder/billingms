@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getNextPurchaseNumber, updateStockAfterPurchase } from '@/db/database';
+import { db, getNextPurchaseNumber, updateStockAfterPurchase, purchaseNumberExists } from '@/db/database';
 import type { Supplier, PurchaseItem, InventoryItem } from '@/types';
 import { Plus, Search, Trash2, Save, ShoppingCart } from 'lucide-react';
 import { toast } from 'sonner';
+import { supplierSchema, isValidGstNumber, isValidPhone, isValidEmail, sanitizeInput } from '@/lib/validation';
 
 export default function Purchases() {
   const [tab, setTab] = useState<'new' | 'history' | 'suppliers'>('new');
@@ -42,10 +43,18 @@ export default function Purchases() {
   };
 
   const updateItem = (idx: number, field: string, val: number) => {
+    // Validate input - prevent negative values
+    if (field === 'quantity') {
+      val = Math.max(1, Math.min(99999, Math.floor(val)));
+    }
+    if (field === 'purchasePrice') {
+      val = Math.max(0, Math.min(99999999, val));
+    }
+    
     setLineItems(prev => {
       const u = [...prev];
       (u[idx] as any)[field] = val;
-      u[idx].totalAmount = u[idx].purchasePrice * u[idx].quantity * (1 + u[idx].gstPercent / 100);
+      u[idx].totalAmount = Math.round(u[idx].purchasePrice * u[idx].quantity * (1 + u[idx].gstPercent / 100) * 100) / 100;
       return u;
     });
   };
@@ -56,31 +65,73 @@ export default function Purchases() {
     if (!selectedSupplier) return toast.error('Select a supplier');
     if (lineItems.length === 0) return toast.error('Add at least one item');
 
-    await db.purchases.add({
-      purchaseNumber, purchaseDate: new Date(purchaseDate), supplierId: selectedSupplier.id!,
-      supplierName: selectedSupplier.name, invoiceRef, items: lineItems,
-      subtotal: lineItems.reduce((s, i) => s + i.purchasePrice * i.quantity, 0),
-      totalTax: grandTotal - lineItems.reduce((s, i) => s + i.purchasePrice * i.quantity, 0),
-      grandTotal, notes, createdAt: new Date(),
-    });
+    // Check for duplicate purchase number
+    if (await purchaseNumberExists(purchaseNumber)) {
+      toast.error('Purchase number already exists. Refreshing...');
+      const newNum = await getNextPurchaseNumber();
+      setPurchaseNumber(newNum);
+      return;
+    }
 
-    await updateStockAfterPurchase(
-      lineItems.map(li => ({ itemId: li.itemId, quantity: li.quantity, name: li.name, purchasePrice: li.purchasePrice })),
-      purchaseNumber
-    );
+    try {
+      await db.purchases.add({
+        purchaseNumber, 
+        purchaseDate: new Date(purchaseDate), 
+        supplierId: selectedSupplier.id!,
+        supplierName: sanitizeInput(selectedSupplier.name), 
+        invoiceRef: sanitizeInput(invoiceRef), 
+        items: lineItems,
+        subtotal: Math.round(lineItems.reduce((s, i) => s + i.purchasePrice * i.quantity, 0) * 100) / 100,
+        totalTax: Math.round((grandTotal - lineItems.reduce((s, i) => s + i.purchasePrice * i.quantity, 0)) * 100) / 100,
+        grandTotal: Math.round(grandTotal * 100) / 100, 
+        notes: sanitizeInput(notes), 
+        createdAt: new Date(),
+      });
 
-    toast.success('Purchase recorded & stock updated!');
-    setLineItems([]);
-    setSelectedSupplier(null);
-    setNotes('');
-    setInvoiceRef('');
-    const num = await getNextPurchaseNumber();
-    setPurchaseNumber(num);
+      await updateStockAfterPurchase(
+        lineItems.map(li => ({ itemId: li.itemId, quantity: li.quantity, name: li.name, purchasePrice: li.purchasePrice })),
+        purchaseNumber
+      );
+
+      toast.success('Purchase recorded & stock updated!');
+      setLineItems([]);
+      setSelectedSupplier(null);
+      setNotes('');
+      setInvoiceRef('');
+      const num = await getNextPurchaseNumber();
+      setPurchaseNumber(num);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save purchase');
+    }
   };
 
   const handleAddSupplier = async () => {
-    if (!supplierForm.name.trim()) return toast.error('Supplier name required');
-    await db.suppliers.add({ ...supplierForm, createdAt: new Date() } as Supplier);
+    // Validate with zod schema
+    const validation = supplierSchema.safeParse(supplierForm);
+    if (!validation.success) {
+      const firstError = validation.error.errors[0];
+      return toast.error(firstError.message);
+    }
+
+    // Additional format validations
+    if (supplierForm.gstNumber && !isValidGstNumber(supplierForm.gstNumber)) {
+      return toast.error('Invalid GST number format');
+    }
+    if (supplierForm.phone && !isValidPhone(supplierForm.phone)) {
+      return toast.error('Invalid phone number format (10 digits starting with 6-9)');
+    }
+    if (supplierForm.email && !isValidEmail(supplierForm.email)) {
+      return toast.error('Invalid email format');
+    }
+
+    await db.suppliers.add({ 
+      name: validation.data.name,
+      phone: supplierForm.phone,
+      gstNumber: supplierForm.gstNumber.toUpperCase(),
+      address: validation.data.address,
+      email: supplierForm.email.toLowerCase(),
+      createdAt: new Date() 
+    } as Supplier);
     toast.success('Supplier added');
     setShowSupplierForm(false);
     setSupplierForm({ name: '', phone: '', gstNumber: '', address: '', email: '' });
