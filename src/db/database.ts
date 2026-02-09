@@ -12,12 +12,12 @@ export class AppDatabase extends Dexie {
 
   constructor() {
     super('ElectroBillDB');
-    this.version(1).stores({
-      items: '++id, name, sku, category, brand, specification, isActive',
-      customers: '++id, name, phone, gstNumber',
-      suppliers: '++id, name, phone, gstNumber',
-      invoices: '++id, invoiceNumber, invoiceDate, customerId, status',
-      purchases: '++id, purchaseNumber, purchaseDate, supplierId',
+    this.version(2).stores({
+      items: '++id, name, sku, category, brand, specification, isActive, createdAt',
+      customers: '++id, name, phone, gstNumber, createdAt',
+      suppliers: '++id, name, phone, gstNumber, createdAt',
+      invoices: '++id, invoiceNumber, invoiceDate, customerId, status, createdAt',
+      purchases: '++id, purchaseNumber, purchaseDate, supplierId, createdAt',
       stockLedger: '++id, itemId, type, date',
       settings: '++id',
     });
