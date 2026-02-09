@@ -142,12 +142,14 @@ export default function Billing() {
     try {
       const invoice: Invoice = {
         invoiceNumber,
+        invoiceType: 'tax_invoice',
         invoiceDate: new Date(invoiceDate),
         customerId: selectedCustomer?.id ?? 0,
         customerName: sanitizeInput(selectedCustomer?.name ?? 'Walk-in Customer'),
         customerGst: selectedCustomer?.gstNumber ?? '',
         customerAddress: sanitizeInput(selectedCustomer?.address ?? ''),
         customerPhone: selectedCustomer?.phone ?? '',
+        customerStateCode: selectedCustomer?.stateCode,
         items: lineItems,
         subtotal: roundCurrency(subtotal),
         totalCgst: roundCurrency(totalCgst),
