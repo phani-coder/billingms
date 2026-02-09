@@ -4,6 +4,7 @@ import { db } from '@/db/database';
 import type { Customer } from '@/types';
 import { Plus, Search, Edit2, Trash2, Users, Phone, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
+import { customerSchema, isValidGstNumber, isValidPhone, isValidEmail } from '@/lib/validation';
 
 export default function Customers() {
   const [search, setSearch] = useState('');
@@ -19,12 +20,46 @@ export default function Customers() {
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
 
   const handleSave = async () => {
-    if (!form.name.trim()) return toast.error('Name is required');
+    // Validate with zod schema
+    const validation = customerSchema.safeParse(form);
+    if (!validation.success) {
+      const firstError = validation.error.errors[0];
+      return toast.error(firstError.message);
+    }
+
+    const validatedData = validation.data;
+
+    // Additional format validations
+    if (form.gstNumber && !isValidGstNumber(form.gstNumber)) {
+      return toast.error('Invalid GST number format');
+    }
+    if (form.phone && !isValidPhone(form.phone)) {
+      return toast.error('Invalid phone number format (10 digits starting with 6-9)');
+    }
+    if (form.email && !isValidEmail(form.email)) {
+      return toast.error('Invalid email format');
+    }
+
     if (editCustomer?.id) {
-      await db.customers.update(editCustomer.id, { ...form });
+      await db.customers.update(editCustomer.id, { 
+        name: validatedData.name,
+        phone: form.phone,
+        gstNumber: form.gstNumber.toUpperCase(),
+        address: validatedData.address,
+        email: form.email.toLowerCase(),
+        isWalkIn: form.isWalkIn,
+      });
       toast.success('Customer updated');
     } else {
-      await db.customers.add({ ...form, createdAt: new Date() } as Customer);
+      await db.customers.add({ 
+        name: validatedData.name,
+        phone: form.phone,
+        gstNumber: form.gstNumber.toUpperCase(),
+        address: validatedData.address,
+        email: form.email.toLowerCase(),
+        isWalkIn: form.isWalkIn,
+        createdAt: new Date() 
+      } as Customer);
       toast.success('Customer added');
     }
     setShowForm(false);

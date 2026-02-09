@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
-import { db, getNextInvoiceNumber, updateStockAfterSale, getSettings } from '@/db/database';
+import { db, getNextInvoiceNumber, updateStockAfterSale, getSettings, validateStockForSale, invoiceNumberExists } from '@/db/database';
 import type { InventoryItem, Invoice, InvoiceItem, Customer } from '@/types';
 import { Search, Plus, Trash2, Printer, FileDown, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
 import ItemFormDialog from '@/components/ItemFormDialog';
 import InvoicePrint from '@/components/InvoicePrint';
 import type { AppSettings } from '@/types';
+import { roundCurrency, calculateGst, sanitizeInput } from '@/lib/validation';
 
 export default function Billing() {
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -52,8 +53,8 @@ export default function Billing() {
       if (existing.quantity >= item.currentStock) return toast.error('Insufficient stock!');
       updateLineItem(lineItems.indexOf(existing), 'quantity', existing.quantity + 1);
     } else {
-      const taxableAmount = item.sellingPrice;
-      const gstAmount = taxableAmount * item.gstPercent / 100;
+      const taxableAmount = roundCurrency(item.sellingPrice);
+      const { cgst, sgst, igst } = calculateGst(taxableAmount, item.gstPercent, isIgst);
       const newItem: InvoiceItem = {
         itemId: item.id!,
         name: item.name,
@@ -64,11 +65,11 @@ export default function Billing() {
         price: item.sellingPrice,
         discount: 0,
         gstPercent: item.gstPercent,
-        cgst: isIgst ? 0 : gstAmount / 2,
-        sgst: isIgst ? 0 : gstAmount / 2,
-        igst: isIgst ? gstAmount : 0,
+        cgst,
+        sgst,
+        igst,
         taxableAmount,
-        totalAmount: taxableAmount + gstAmount,
+        totalAmount: roundCurrency(taxableAmount + cgst + sgst + igst),
       };
       setLineItems(prev => [...prev, newItem]);
     }
@@ -77,16 +78,27 @@ export default function Billing() {
   };
 
   const updateLineItem = (index: number, field: string, value: number) => {
+    // Validate input - prevent negative values and unreasonable quantities
+    if (field === 'quantity') {
+      value = Math.max(1, Math.min(99999, Math.floor(value)));
+    }
+    if (field === 'discount') {
+      value = Math.max(0, Math.min(99999999, value));
+    }
+    if (field === 'price') {
+      value = Math.max(0, Math.min(99999999, value));
+    }
+    
     setLineItems(prev => {
       const updated = [...prev];
       const item = { ...updated[index], [field]: value };
-      const taxableAmount = (item.price - item.discount) * item.quantity;
-      const gstAmount = taxableAmount * item.gstPercent / 100;
+      const taxableAmount = roundCurrency((item.price - item.discount) * item.quantity);
+      const { cgst, sgst, igst } = calculateGst(taxableAmount, item.gstPercent, isIgst);
       item.taxableAmount = taxableAmount;
-      item.cgst = isIgst ? 0 : gstAmount / 2;
-      item.sgst = isIgst ? 0 : gstAmount / 2;
-      item.igst = isIgst ? gstAmount : 0;
-      item.totalAmount = taxableAmount + gstAmount;
+      item.cgst = cgst;
+      item.sgst = sgst;
+      item.igst = igst;
+      item.totalAmount = roundCurrency(taxableAmount + cgst + sgst + igst);
       updated[index] = item;
       return updated;
     });
@@ -108,45 +120,68 @@ export default function Billing() {
   const handleSave = async (status: 'draft' | 'completed') => {
     if (lineItems.length === 0) return toast.error('Add at least one item');
 
-    // Check stock
-    for (const li of lineItems) {
-      const dbItem = await db.items.get(li.itemId);
-      if (dbItem && li.quantity > dbItem.currentStock) {
-        return toast.error(`Insufficient stock for ${li.name}`);
+    // Validate stock availability first
+    if (status === 'completed') {
+      const stockValidation = await validateStockForSale(
+        lineItems.map(li => ({ itemId: li.itemId, quantity: li.quantity }))
+      );
+      if (!stockValidation.valid) {
+        stockValidation.errors.forEach(err => toast.error(err));
+        return;
       }
     }
 
-    const invoice: Invoice = {
-      invoiceNumber,
-      invoiceDate: new Date(invoiceDate),
-      customerId: selectedCustomer?.id ?? 0,
-      customerName: selectedCustomer?.name ?? 'Walk-in Customer',
-      customerGst: selectedCustomer?.gstNumber ?? '',
-      customerAddress: selectedCustomer?.address ?? '',
-      customerPhone: selectedCustomer?.phone ?? '',
-      items: lineItems,
-      subtotal, totalCgst, totalSgst, totalIgst, totalDiscount,
-      grandTotal, roundOff, paymentMode, isIgst, notes,
-      status,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    const id = await db.invoices.add(invoice);
-
-    if (status === 'completed') {
-      await updateStockAfterSale(
-        lineItems.map(li => ({ itemId: li.itemId, quantity: li.quantity, name: li.name })),
-        invoiceNumber
-      );
+    // Check for duplicate invoice number (race condition prevention)
+    if (await invoiceNumberExists(invoiceNumber)) {
+      toast.error('Invoice number already exists. Refreshing...');
+      const newNum = await getNextInvoiceNumber();
+      setInvoiceNumber(newNum);
+      return;
     }
 
-    const saved = await db.invoices.get(id);
-    setSavedInvoice(saved ?? null);
-    toast.success(status === 'completed' ? 'Invoice saved!' : 'Draft saved');
+    try {
+      const invoice: Invoice = {
+        invoiceNumber,
+        invoiceDate: new Date(invoiceDate),
+        customerId: selectedCustomer?.id ?? 0,
+        customerName: sanitizeInput(selectedCustomer?.name ?? 'Walk-in Customer'),
+        customerGst: selectedCustomer?.gstNumber ?? '',
+        customerAddress: sanitizeInput(selectedCustomer?.address ?? ''),
+        customerPhone: selectedCustomer?.phone ?? '',
+        items: lineItems,
+        subtotal: roundCurrency(subtotal),
+        totalCgst: roundCurrency(totalCgst),
+        totalSgst: roundCurrency(totalSgst),
+        totalIgst: roundCurrency(totalIgst),
+        totalDiscount: roundCurrency(totalDiscount),
+        grandTotal,
+        roundOff: roundCurrency(roundOff),
+        paymentMode,
+        isIgst,
+        notes: sanitizeInput(notes),
+        status,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
 
-    if (status === 'completed') {
-      setShowPrint(true);
+      const id = await db.invoices.add(invoice);
+
+      if (status === 'completed') {
+        await updateStockAfterSale(
+          lineItems.map(li => ({ itemId: li.itemId, quantity: li.quantity, name: li.name })),
+          invoiceNumber
+        );
+      }
+
+      const saved = await db.invoices.get(id);
+      setSavedInvoice(saved ?? null);
+      toast.success(status === 'completed' ? 'Invoice saved!' : 'Draft saved');
+
+      if (status === 'completed') {
+        setShowPrint(true);
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Failed to save invoice');
     }
   };
 

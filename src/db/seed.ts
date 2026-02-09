@@ -92,5 +92,5 @@ export async function seedDemoData() {
     await db.items.add(item as InventoryItem);
   }
 
-  console.log('Demo data seeded successfully!');
+  // Seed complete - no console.log in production
 }
