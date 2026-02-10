@@ -121,7 +121,7 @@
     @apply bg-card rounded-xl p-5 border shadow-sm card-hover;
   }
   .page-header {
-    @apply flex items-center justify-between mb-6;
+    @apply flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6;
   }
   .page-title {
     @apply text-2xl font-bold text-foreground;
