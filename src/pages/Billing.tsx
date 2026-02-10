@@ -65,9 +65,7 @@ export default function Billing() {
         price: item.sellingPrice,
         discount: 0,
         gstPercent: item.gstPercent,
-        cgst,
-        sgst,
-        igst,
+        cgst, sgst, igst,
         taxableAmount,
         totalAmount: roundCurrency(taxableAmount + cgst + sgst + igst),
       };
@@ -78,16 +76,9 @@ export default function Billing() {
   };
 
   const updateLineItem = (index: number, field: string, value: number) => {
-    // Validate input - prevent negative values and unreasonable quantities
-    if (field === 'quantity') {
-      value = Math.max(1, Math.min(99999, Math.floor(value)));
-    }
-    if (field === 'discount') {
-      value = Math.max(0, Math.min(99999999, value));
-    }
-    if (field === 'price') {
-      value = Math.max(0, Math.min(99999999, value));
-    }
+    if (field === 'quantity') value = Math.max(1, Math.min(99999, Math.floor(value)));
+    if (field === 'discount') value = Math.max(0, Math.min(99999999, value));
+    if (field === 'price') value = Math.max(0, Math.min(99999999, value));
     
     setLineItems(prev => {
       const updated = [...prev];
@@ -95,9 +86,7 @@ export default function Billing() {
       const taxableAmount = roundCurrency((item.price - item.discount) * item.quantity);
       const { cgst, sgst, igst } = calculateGst(taxableAmount, item.gstPercent, isIgst);
       item.taxableAmount = taxableAmount;
-      item.cgst = cgst;
-      item.sgst = sgst;
-      item.igst = igst;
+      item.cgst = cgst; item.sgst = sgst; item.igst = igst;
       item.totalAmount = roundCurrency(taxableAmount + cgst + sgst + igst);
       updated[index] = item;
       return updated;
@@ -119,8 +108,6 @@ export default function Billing() {
 
   const handleSave = async (status: 'draft' | 'completed') => {
     if (lineItems.length === 0) return toast.error('Add at least one item');
-
-    // Validate stock availability first
     if (status === 'completed') {
       const stockValidation = await validateStockForSale(
         lineItems.map(li => ({ itemId: li.itemId, quantity: li.quantity }))
@@ -130,15 +117,12 @@ export default function Billing() {
         return;
       }
     }
-
-    // Check for duplicate invoice number (race condition prevention)
     if (await invoiceNumberExists(invoiceNumber)) {
       toast.error('Invoice number already exists. Refreshing...');
       const newNum = await getNextInvoiceNumber();
       setInvoiceNumber(newNum);
       return;
     }
-
     try {
       const invoice: Invoice = {
         invoiceNumber,
@@ -165,23 +149,17 @@ export default function Billing() {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-
       const id = await db.invoices.add(invoice);
-
       if (status === 'completed') {
         await updateStockAfterSale(
           lineItems.map(li => ({ itemId: li.itemId, quantity: li.quantity, name: li.name })),
           invoiceNumber
         );
       }
-
       const saved = await db.invoices.get(id);
       setSavedInvoice(saved ?? null);
       toast.success(status === 'completed' ? 'Invoice saved!' : 'Draft saved');
-
-      if (status === 'completed') {
-        setShowPrint(true);
-      }
+      if (status === 'completed') setShowPrint(true);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to save invoice');
     }
@@ -200,17 +178,10 @@ export default function Billing() {
     setInvoiceDate(new Date().toISOString().split('T')[0]);
   };
 
-  // Keyboard shortcut: F2 to focus item search
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'F2') {
-        e.preventDefault();
-        itemSearchRef.current?.focus();
-      }
-      if (e.key === 'F9') {
-        e.preventDefault();
-        handleSave('completed');
-      }
+      if (e.key === 'F2') { e.preventDefault(); itemSearchRef.current?.focus(); }
+      if (e.key === 'F9') { e.preventDefault(); handleSave('completed'); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -222,36 +193,37 @@ export default function Billing() {
 
   return (
     <div className="animate-fade-in">
-      <div className="page-header">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h1 className="page-title">New Invoice</h1>
-          <p className="text-sm text-muted-foreground">Press F2 to search items • F9 to save</p>
+          <p className="text-sm text-muted-foreground hidden sm:block">Press F2 to search items • F9 to save</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => handleSave('draft')} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border text-sm font-medium hover:bg-muted">
-            <Save className="w-4 h-4" /> Save Draft
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button onClick={() => handleSave('draft')} className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg border text-sm font-medium hover:bg-muted">
+            <Save className="w-4 h-4" /> Draft
           </button>
-          <button onClick={() => handleSave('completed')} className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+          <button onClick={() => handleSave('completed')} className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
             <FileDown className="w-4 h-4" /> Save & Print
           </button>
         </div>
       </div>
 
       {/* Invoice header */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
         <div>
           <label className="input-label">Invoice #</label>
-          <input className="w-full px-3 py-2 rounded-lg border bg-muted text-sm amount-text" value={invoiceNumber} readOnly />
+          <input className="w-full px-3 py-2.5 rounded-lg border bg-muted text-sm amount-text" value={invoiceNumber} readOnly />
         </div>
         <div>
           <label className="input-label">Date</label>
-          <input type="date" className="w-full px-3 py-2 rounded-lg border bg-background text-sm" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
+          <input type="date" className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm" value={invoiceDate} onChange={e => setInvoiceDate(e.target.value)} />
         </div>
-        <div className="relative">
+        <div className="relative sm:col-span-2 lg:col-span-1">
           <label className="input-label">Customer</label>
           <input
-            className="w-full px-3 py-2 rounded-lg border bg-background text-sm"
-            placeholder="Search customer or leave blank for walk-in"
+            className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm"
+            placeholder="Search customer or leave blank"
             value={selectedCustomer ? selectedCustomer.name : customerSearch}
             onChange={e => { setCustomerSearch(e.target.value); setSelectedCustomer(null); setShowCustomerDropdown(true); }}
             onFocus={() => setShowCustomerDropdown(true)}
@@ -274,20 +246,18 @@ export default function Billing() {
         </div>
       </div>
 
-      <div className="flex gap-4 mb-4">
+      <div className="flex flex-wrap gap-4 mb-4">
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isIgst} onChange={e => setIsIgst(e.target.checked)} className="rounded" />
-          Interstate Supply (IGST)
+          Interstate (IGST)
         </label>
-        <div>
-          <select className="px-3 py-1.5 rounded-lg border bg-background text-sm" value={paymentMode} onChange={e => setPaymentMode(e.target.value as Invoice['paymentMode'])}>
-            <option value="cash">Cash</option>
-            <option value="upi">UPI</option>
-            <option value="card">Card</option>
-            <option value="bank">Bank Transfer</option>
-            <option value="credit">Credit</option>
-          </select>
-        </div>
+        <select className="px-3 py-1.5 rounded-lg border bg-background text-sm" value={paymentMode} onChange={e => setPaymentMode(e.target.value as Invoice['paymentMode'])}>
+          <option value="cash">Cash</option>
+          <option value="upi">UPI</option>
+          <option value="card">Card</option>
+          <option value="bank">Bank Transfer</option>
+          <option value="credit">Credit</option>
+        </select>
       </div>
 
       {/* Item search */}
@@ -296,7 +266,7 @@ export default function Billing() {
         <input
           ref={itemSearchRef}
           className="w-full pl-10 pr-20 py-3 rounded-lg border bg-card text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          placeholder="Search item by name, SKU, brand... (F2)"
+          placeholder="Search item by name, SKU..."
           value={itemSearch}
           onChange={e => { setItemSearch(e.target.value); setShowItemDropdown(true); }}
           onFocus={() => setShowItemDropdown(true)}
@@ -313,18 +283,18 @@ export default function Billing() {
             {filteredItems.length === 0 ? (
               <div className="px-3 py-4 text-sm text-center text-muted-foreground">
                 No items found.{' '}
-                <button onClick={() => setShowAddItem(true)} className="text-primary underline">Add new item</button>
+                <button onClick={() => setShowAddItem(true)} className="text-primary underline">Add new</button>
               </div>
             ) : filteredItems.map(item => (
               <button key={item.id} className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between items-center" onClick={() => addLineItem(item)}>
-                <div>
+                <div className="min-w-0 flex-1">
                   <span className="font-medium">{item.name}</span>
-                  <span className="text-muted-foreground ml-2 text-xs">{item.brand} • {item.sku}</span>
+                  <span className="text-muted-foreground ml-2 text-xs hidden sm:inline">{item.brand} • {item.sku}</span>
                 </div>
-                <div className="text-right">
+                <div className="text-right shrink-0 ml-2">
                   <span className="amount-text font-semibold">₹{item.sellingPrice}</span>
                   <span className={`ml-2 text-xs ${item.currentStock <= item.minStockLevel ? 'text-destructive' : 'text-muted-foreground'}`}>
-                    Stock: {item.currentStock}
+                    {item.currentStock}
                   </span>
                 </div>
               </button>
@@ -333,8 +303,8 @@ export default function Billing() {
         )}
       </div>
 
-      {/* Line items table */}
-      <div className="bg-card rounded-xl border overflow-hidden mb-6">
+      {/* Line items - Desktop table */}
+      <div className="hidden lg:block bg-card rounded-xl border overflow-hidden mb-6">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/50">
@@ -386,10 +356,51 @@ export default function Billing() {
         </table>
       </div>
 
+      {/* Line items - Mobile cards */}
+      <div className="lg:hidden space-y-3 mb-6">
+        {lineItems.length === 0 ? (
+          <div className="bg-card rounded-xl border p-6 text-center text-muted-foreground text-sm">
+            No items added. Search and add items above.
+          </div>
+        ) : lineItems.map((li, idx) => (
+          <div key={idx} className="bg-card rounded-xl border p-4">
+            <div className="flex items-start justify-between gap-2 mb-3">
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">{li.name}</p>
+                <p className="text-xs text-muted-foreground">{li.sku} {li.hsnCode && `• HSN: ${li.hsnCode}`}</p>
+              </div>
+              <button onClick={() => removeLineItem(idx)} className="p-1 rounded hover:bg-destructive/10 text-destructive shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs text-muted-foreground">Qty</label>
+                <input type="number" min="1" className="w-full text-center px-2 py-1.5 rounded border bg-background text-sm amount-text" value={li.quantity}
+                  onChange={e => updateLineItem(idx, 'quantity', parseInt(e.target.value) || 1)} />
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Price</label>
+                <p className="text-sm amount-text font-medium py-1.5">₹{li.price.toLocaleString('en-IN')}</p>
+              </div>
+              <div>
+                <label className="text-xs text-muted-foreground">Disc.</label>
+                <input type="number" min="0" step="0.01" className="w-full text-center px-2 py-1.5 rounded border bg-background text-sm amount-text" value={li.discount}
+                  onChange={e => updateLineItem(idx, 'discount', parseFloat(e.target.value) || 0)} />
+              </div>
+            </div>
+            <div className="flex items-center justify-between mt-3 pt-3 border-t text-sm">
+              <span className="text-muted-foreground">GST {li.gstPercent}%</span>
+              <span className="font-semibold amount-text">₹{li.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
       {/* Totals */}
       {lineItems.length > 0 && (
         <div className="flex justify-end mb-6">
-          <div className="bg-card rounded-xl border p-5 w-full max-w-sm space-y-2">
+          <div className="bg-card rounded-xl border p-5 w-full sm:max-w-sm space-y-2">
             <div className="flex justify-between text-sm"><span>Subtotal</span><span className="amount-text">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
             {totalDiscount > 0 && <div className="flex justify-between text-sm text-success"><span>Discount</span><span className="amount-text">-₹{totalDiscount.toFixed(2)}</span></div>}
             {isIgst ? (
@@ -409,7 +420,7 @@ export default function Billing() {
       {/* Notes */}
       <div className="mb-6">
         <label className="input-label">Notes</label>
-        <textarea className="w-full px-3 py-2 rounded-lg border bg-background text-sm h-16 resize-none" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any additional notes..." />
+        <textarea className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm h-16 resize-none" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any additional notes..." />
       </div>
 
       {showAddItem && <ItemFormDialog item={null} onClose={() => setShowAddItem(false)} />}

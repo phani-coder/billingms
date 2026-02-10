@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Package, FileText, ShoppingCart, Users,
   BarChart3, Database, Settings, Menu, X, Zap, ChevronRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 const navItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -18,16 +19,33 @@ const navItems = [
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(false);
   const location = useLocation();
+  const isMobile = useIsMobile();
+
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    if (isMobile) setSidebarOpen(false);
+  }, [location.pathname, isMobile]);
 
   return (
     <div className="flex h-screen overflow-hidden">
+      {/* Mobile overlay */}
+      {isMobile && sidebarOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-foreground/40 backdrop-blur-sm"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <aside
         className={cn(
-          'sidebar-gradient flex flex-col transition-all duration-300 no-print',
-          collapsed ? 'w-16' : 'w-60'
+          'sidebar-gradient flex flex-col transition-all duration-300 no-print z-50',
+          isMobile
+            ? cn('fixed inset-y-0 left-0 w-64', sidebarOpen ? 'translate-x-0' : '-translate-x-full')
+            : collapsed ? 'w-16' : 'w-60'
         )}
       >
         {/* Logo */}
@@ -35,11 +53,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-accent">
             <Zap className="w-5 h-5 text-accent-foreground" />
           </div>
-          {!collapsed && (
-            <div className="overflow-hidden">
+          {(!collapsed || isMobile) && (
+            <div className="overflow-hidden flex-1">
               <h1 className="text-sm font-bold text-sidebar-foreground truncate">ElectroBill</h1>
               <p className="text-[10px] text-sidebar-muted">Billing & Inventory</p>
             </div>
+          )}
+          {isMobile && (
+            <button onClick={() => setSidebarOpen(false)} className="p-1 text-sidebar-muted hover:text-sidebar-foreground">
+              <X className="w-5 h-5" />
+            </button>
           )}
         </div>
 
@@ -59,25 +82,41 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <Icon className="w-5 h-5 flex-shrink-0" />
-                {!collapsed && <span>{label}</span>}
-                {!collapsed && active && <ChevronRight className="w-4 h-4 ml-auto" />}
+                {(!collapsed || isMobile) && <span>{label}</span>}
+                {(!collapsed || isMobile) && active && <ChevronRight className="w-4 h-4 ml-auto" />}
               </Link>
             );
           })}
         </nav>
 
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center justify-center py-3 border-t border-sidebar-border text-sidebar-muted hover:text-sidebar-foreground transition-colors"
-        >
-          {collapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
-        </button>
+        {/* Collapse toggle (desktop only) */}
+        {!isMobile && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="flex items-center justify-center py-3 border-t border-sidebar-border text-sidebar-muted hover:text-sidebar-foreground transition-colors"
+          >
+            {collapsed ? <Menu className="w-5 h-5" /> : <X className="w-5 h-5" />}
+          </button>
+        )}
       </aside>
 
       {/* Main content */}
       <main className="flex-1 overflow-y-auto bg-background">
-        <div className="p-6 max-w-[1400px] mx-auto">
+        {/* Mobile top bar */}
+        {isMobile && (
+          <div className="sticky top-0 z-30 flex items-center gap-3 px-4 py-3 bg-background border-b">
+            <button onClick={() => setSidebarOpen(true)} className="p-1.5 rounded-lg hover:bg-muted">
+              <Menu className="w-5 h-5" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center justify-center w-6 h-6 rounded-md bg-accent">
+                <Zap className="w-3.5 h-3.5 text-accent-foreground" />
+              </div>
+              <span className="text-sm font-bold">ElectroBill</span>
+            </div>
+          </div>
+        )}
+        <div className="p-4 md:p-6 max-w-[1400px] mx-auto">
           {children}
         </div>
       </main>
