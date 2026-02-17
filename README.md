@@ -1,73 +1,151 @@
-# Welcome to your Lovable project
+# ElectroBill — GST Billing Software
 
-## Project info
+A desktop billing and inventory management system built for Indian small businesses.
+Built with Electron + React + TypeScript + SQLite.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+---
 
-## How can I edit this code?
+## Features
 
-There are several ways of editing your application.
+- **GST-compliant invoicing** — Tax invoices, proforma, credit/debit notes
+- **CGST / SGST / IGST** — Auto-determined from seller/buyer GSTIN state codes
+- **E-Invoice ready** — NIC e-Invoice JSON format generation
+- **Inventory management** — Stock tracking with full ledger history
+- **Purchase management** — Supplier and purchase entry tracking
+- **Multi-user RBAC** — 5 roles: Super Admin, Admin, Billing Staff, Purchase Staff, Auditor
+- **Audit log** — Immutable log of every action with user, timestamp, and old/new values
+- **Backup & restore** — Encrypted JSON backup with SHA-256 checksum verification
+- **HSN summary** — Invoice-level HSN grouping for GST filing
 
-**Use Lovable**
+---
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+## Tech Stack
 
-Changes made via Lovable will be committed automatically to this repo.
+| Layer | Technology |
+|---|---|
+| Desktop shell | Electron |
+| Frontend | React + TypeScript + Vite |
+| UI components | shadcn/ui + Tailwind CSS |
+| Database | SQLite (better-sqlite3) via Electron IPC |
+| Testing | Vitest — 241 tests across 8 suites |
+| Password hashing | bcryptjs (cost factor 12) |
 
-**Use your preferred IDE**
+---
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Getting Started
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Prerequisites
+- Node.js 18+
+- npm (do not use bun — see lockfile note below)
 
-Follow these steps:
+### Install dependencies
+```bash
+npm install
+```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+### Run in development (browser preview)
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Run as Electron desktop app
+```bash
+npm run electron:dev
+```
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Build distributable (.exe / .dmg)
+```bash
+npm run electron:build
+```
 
-**Use GitHub Codespaces**
+---
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Default Login
 
-## What technologies are used for this project?
+On first run, a default admin account is created automatically:
 
-This project is built with:
+| Username | Password |
+|---|---|
+| admin | admin123 |
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+**You will be forced to change this password on first login.**
+The default password cannot be used after the first login.
 
-## How can I deploy this project?
+---
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+## Running Tests
 
-## Can I connect a custom domain to my Lovable project?
+```bash
+npx vitest run
+```
 
-Yes, you can!
+For detailed per-test output:
+```bash
+npx vitest run --reporter=verbose
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+---
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## Project Structure
+
+```
+billingms/
+├── electron/
+│   ├── main.cjs          # Electron main process + all IPC handlers
+│   ├── preload.cjs       # Secure contextBridge API exposed to renderer
+│   └── backend/
+│       └── db.cjs        # SQLite database init, schema, backup
+├── src/
+│   ├── lib/
+│   │   ├── gst-calculations.ts   # GST engine (CGST/SGST/IGST, rounding, HSN)
+│   │   ├── rbac.ts               # Role-based access control
+│   │   ├── audit.ts              # Audit log writer
+│   │   ├── backup.ts             # Backup/restore logic
+│   │   ├── einvoice.ts           # NIC e-Invoice JSON generator
+│   │   └── validation.ts         # Zod schemas + input sanitization
+│   ├── pages/
+│   │   ├── Index.tsx             # Login + forced password change
+│   │   ├── Dashboard.tsx
+│   │   ├── Billing.tsx
+│   │   ├── Inventory.tsx
+│   │   ├── Customers.tsx
+│   │   ├── Purchases.tsx
+│   │   ├── Reports.tsx
+│   │   ├── Backup.tsx
+│   │   └── Settings.tsx
+│   ├── types/
+│   │   └── index.ts              # All TypeScript interfaces
+│   └── test/
+│       ├── gst-calculations.test.ts
+│       ├── rbac.test.ts
+│       ├── invoice.test.ts
+│       ├── backup.test.ts
+│       ├── certification.test.ts
+│       ├── stock-ledger.test.ts
+│       └── validation.test.ts
+└── docs/
+```
+
+---
+
+## Security
+
+- `contextIsolation: true`, `nodeIntegration: false` — renderer has no Node.js access
+- All IPC handlers verify session tokens before executing
+- Passwords hashed with bcryptjs (cost 12) — never stored in plaintext
+- DevTools disabled in production builds
+- F12 / Ctrl+Shift+I keyboard shortcuts blocked in production
+- Soft deletes only — no financial data is ever hard-deleted
+
+---
+
+## Package Manager
+
+This project uses **npm**. Do not use `bun install` — the `bun.lockb` file is a leftover
+from initial scaffolding and has been superseded by `package-lock.json`.
+
+---
+
+## License
+
+Private — not for redistribution.
