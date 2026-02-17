@@ -16,8 +16,6 @@ export default function Purchases() {
   const [showItemDD, setShowItemDD] = useState(false);
   const [lineItems, setLineItems] = useState<(PurchaseItem & { currentPrice: number })[]>([]);
   const [notes, setNotes] = useState('');
-
-  // Supplier form
   const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [supplierForm, setSupplierForm] = useState({ name: '', phone: '', gstNumber: '', address: '', email: '' });
 
@@ -38,19 +36,12 @@ export default function Purchases() {
       purchasePrice: item.purchasePrice, gstPercent: item.gstPercent,
       totalAmount: item.purchasePrice, currentPrice: item.purchasePrice
     }]);
-    setItemSearch('');
-    setShowItemDD(false);
+    setItemSearch(''); setShowItemDD(false);
   };
 
   const updateItem = (idx: number, field: string, val: number) => {
-    // Validate input - prevent negative values
-    if (field === 'quantity') {
-      val = Math.max(1, Math.min(99999, Math.floor(val)));
-    }
-    if (field === 'purchasePrice') {
-      val = Math.max(0, Math.min(99999999, val));
-    }
-    
+    if (field === 'quantity') val = Math.max(1, Math.min(99999, Math.floor(val)));
+    if (field === 'purchasePrice') val = Math.max(0, Math.min(99999999, val));
     setLineItems(prev => {
       const u = [...prev];
       (u[idx] as any)[field] = val;
@@ -64,40 +55,26 @@ export default function Purchases() {
   const handleSave = async () => {
     if (!selectedSupplier) return toast.error('Select a supplier');
     if (lineItems.length === 0) return toast.error('Add at least one item');
-
-    // Check for duplicate purchase number
     if (await purchaseNumberExists(purchaseNumber)) {
       toast.error('Purchase number already exists. Refreshing...');
       const newNum = await getNextPurchaseNumber();
       setPurchaseNumber(newNum);
       return;
     }
-
     try {
       await db.purchases.add({
-        purchaseNumber, 
-        purchaseDate: new Date(purchaseDate), 
-        supplierId: selectedSupplier.id!,
-        supplierName: sanitizeInput(selectedSupplier.name), 
-        invoiceRef: sanitizeInput(invoiceRef), 
-        items: lineItems,
+        purchaseNumber, purchaseDate: new Date(purchaseDate), supplierId: selectedSupplier.id!,
+        supplierName: sanitizeInput(selectedSupplier.name), invoiceRef: sanitizeInput(invoiceRef), items: lineItems,
         subtotal: Math.round(lineItems.reduce((s, i) => s + i.purchasePrice * i.quantity, 0) * 100) / 100,
         totalTax: Math.round((grandTotal - lineItems.reduce((s, i) => s + i.purchasePrice * i.quantity, 0)) * 100) / 100,
-        grandTotal: Math.round(grandTotal * 100) / 100, 
-        notes: sanitizeInput(notes), 
-        createdAt: new Date(),
+        grandTotal: Math.round(grandTotal * 100) / 100, notes: sanitizeInput(notes), createdAt: new Date(),
       });
-
       await updateStockAfterPurchase(
         lineItems.map(li => ({ itemId: li.itemId, quantity: li.quantity, name: li.name, purchasePrice: li.purchasePrice })),
         purchaseNumber
       );
-
       toast.success('Purchase recorded & stock updated!');
-      setLineItems([]);
-      setSelectedSupplier(null);
-      setNotes('');
-      setInvoiceRef('');
+      setLineItems([]); setSelectedSupplier(null); setNotes(''); setInvoiceRef('');
       const num = await getNextPurchaseNumber();
       setPurchaseNumber(num);
     } catch (error) {
@@ -106,31 +83,14 @@ export default function Purchases() {
   };
 
   const handleAddSupplier = async () => {
-    // Validate with zod schema
     const validation = supplierSchema.safeParse(supplierForm);
-    if (!validation.success) {
-      const firstError = validation.error.errors[0];
-      return toast.error(firstError.message);
-    }
-
-    // Additional format validations
-    if (supplierForm.gstNumber && !isValidGstNumber(supplierForm.gstNumber)) {
-      return toast.error('Invalid GST number format');
-    }
-    if (supplierForm.phone && !isValidPhone(supplierForm.phone)) {
-      return toast.error('Invalid phone number format (10 digits starting with 6-9)');
-    }
-    if (supplierForm.email && !isValidEmail(supplierForm.email)) {
-      return toast.error('Invalid email format');
-    }
-
+    if (!validation.success) return toast.error(validation.error.errors[0].message);
+    if (supplierForm.gstNumber && !isValidGstNumber(supplierForm.gstNumber)) return toast.error('Invalid GST number format');
+    if (supplierForm.phone && !isValidPhone(supplierForm.phone)) return toast.error('Invalid phone number format');
+    if (supplierForm.email && !isValidEmail(supplierForm.email)) return toast.error('Invalid email format');
     await db.suppliers.add({ 
-      name: validation.data.name,
-      phone: supplierForm.phone,
-      gstNumber: supplierForm.gstNumber.toUpperCase(),
-      address: validation.data.address,
-      email: supplierForm.email.toLowerCase(),
-      createdAt: new Date() 
+      name: validation.data.name, phone: supplierForm.phone, gstNumber: supplierForm.gstNumber.toUpperCase(),
+      address: validation.data.address, email: supplierForm.email.toLowerCase(), createdAt: new Date() 
     } as Supplier);
     toast.success('Supplier added');
     setShowSupplierForm(false);
@@ -139,12 +99,12 @@ export default function Purchases() {
 
   return (
     <div className="animate-fade-in">
-      <div className="page-header">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h1 className="page-title">Purchases</h1>
-        <div className="flex gap-2">
-          {['new', 'history', 'suppliers'].map(t => (
-            <button key={t} onClick={() => setTab(t as any)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}>
+        <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          {(['new', 'history', 'suppliers'] as const).map(t => (
+            <button key={t} onClick={() => setTab(t)}
+              className={`whitespace-nowrap px-3 py-2 rounded-lg text-sm font-medium transition-colors ${tab === t ? 'bg-primary text-primary-foreground' : 'border hover:bg-muted'}`}>
               {t === 'new' ? 'New Purchase' : t === 'history' ? 'History' : 'Suppliers'}
             </button>
           ))}
@@ -153,7 +113,7 @@ export default function Purchases() {
 
       {tab === 'suppliers' && (
         <div>
-          <button onClick={() => setShowSupplierForm(true)} className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold mb-4">
+          <button onClick={() => setShowSupplierForm(true)} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold mb-4">
             <Plus className="w-4 h-4" /> Add Supplier
           </button>
           {suppliers.length === 0 ? (
@@ -164,28 +124,28 @@ export default function Purchases() {
                 <div key={s.id} className="bg-card rounded-xl border p-4 card-hover">
                   <h3 className="font-semibold">{s.name}</h3>
                   {s.phone && <p className="text-sm text-muted-foreground">{s.phone}</p>}
-                  {s.gstNumber && <p className="text-xs font-mono text-muted-foreground mt-1">GST: {s.gstNumber}</p>}
-                  {s.address && <p className="text-xs text-muted-foreground mt-1">{s.address}</p>}
+                  {s.gstNumber && <p className="text-xs font-mono text-muted-foreground mt-1 break-all">GST: {s.gstNumber}</p>}
+                  {s.address && <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{s.address}</p>}
                 </div>
               ))}
             </div>
           )}
           {showSupplierForm && (
-            <div className="fixed inset-0 z-50 bg-foreground/40 flex items-center justify-center p-4" onClick={() => setShowSupplierForm(false)}>
-              <div className="bg-card rounded-xl shadow-xl border w-full max-w-md" onClick={e => e.stopPropagation()}>
-                <div className="px-6 py-4 border-b"><h2 className="text-lg font-semibold">Add Supplier</h2></div>
-                <div className="p-6 space-y-4">
+            <div className="fixed inset-0 z-50 bg-foreground/40 flex items-end sm:items-center justify-center" onClick={() => setShowSupplierForm(false)}>
+              <div className="bg-card rounded-t-xl sm:rounded-xl shadow-xl border w-full sm:max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <div className="px-5 py-4 border-b sticky top-0 bg-card z-10"><h2 className="text-lg font-semibold">Add Supplier</h2></div>
+                <div className="p-5 space-y-4">
                   {['name', 'phone', 'gstNumber', 'address', 'email'].map(f => (
                     <div key={f}>
                       <label className="input-label capitalize">{f === 'gstNumber' ? 'GST Number' : f} {f === 'name' ? '*' : ''}</label>
-                      <input className="w-full px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                      <input className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                         value={(supplierForm as any)[f]} onChange={e => setSupplierForm(p => ({ ...p, [f]: e.target.value }))} />
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-end gap-3 px-6 py-4 border-t">
-                  <button onClick={() => setShowSupplierForm(false)} className="px-4 py-2 rounded-lg border text-sm">Cancel</button>
-                  <button onClick={handleAddSupplier} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">Add</button>
+                <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 px-5 py-4 border-t sticky bottom-0 bg-card">
+                  <button onClick={() => setShowSupplierForm(false)} className="w-full sm:w-auto px-4 py-2.5 rounded-lg border text-sm">Cancel</button>
+                  <button onClick={handleAddSupplier} className="w-full sm:w-auto px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold">Add</button>
                 </div>
               </div>
             </div>
@@ -198,48 +158,68 @@ export default function Purchases() {
           {purchases.length === 0 ? (
             <p className="text-center py-8 text-muted-foreground">No purchase records yet.</p>
           ) : (
-            <div className="bg-card rounded-xl border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead><tr className="border-b bg-muted/50">
-                  <th className="text-left px-4 py-3">Purchase #</th>
-                  <th className="text-left px-4 py-3">Date</th>
-                  <th className="text-left px-4 py-3">Supplier</th>
-                  <th className="text-left px-4 py-3">Ref</th>
-                  <th className="text-right px-4 py-3">Items</th>
-                  <th className="text-right px-4 py-3">Total</th>
-                </tr></thead>
-                <tbody>
-                  {purchases.map(p => (
-                    <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30">
-                      <td className="px-4 py-3 font-mono text-xs">{p.purchaseNumber}</td>
-                      <td className="px-4 py-3">{new Date(p.purchaseDate).toLocaleDateString('en-IN')}</td>
-                      <td className="px-4 py-3">{p.supplierName}</td>
-                      <td className="px-4 py-3">{p.invoiceRef || '-'}</td>
-                      <td className="px-4 py-3 text-right">{p.items.length}</td>
-                      <td className="px-4 py-3 text-right amount-text font-semibold">₹{p.grandTotal.toLocaleString('en-IN')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              {/* Desktop table */}
+              <div className="hidden md:block bg-card rounded-xl border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b bg-muted/50">
+                    <th className="text-left px-4 py-3">Purchase #</th>
+                    <th className="text-left px-4 py-3">Date</th>
+                    <th className="text-left px-4 py-3">Supplier</th>
+                    <th className="text-left px-4 py-3">Ref</th>
+                    <th className="text-right px-4 py-3">Items</th>
+                    <th className="text-right px-4 py-3">Total</th>
+                  </tr></thead>
+                  <tbody>
+                    {purchases.map(p => (
+                      <tr key={p.id} className="border-b last:border-0 hover:bg-muted/30">
+                        <td className="px-4 py-3 font-mono text-xs">{p.purchaseNumber}</td>
+                        <td className="px-4 py-3">{new Date(p.purchaseDate).toLocaleDateString('en-IN')}</td>
+                        <td className="px-4 py-3">{p.supplierName}</td>
+                        <td className="px-4 py-3">{p.invoiceRef || '-'}</td>
+                        <td className="px-4 py-3 text-right">{p.items.length}</td>
+                        <td className="px-4 py-3 text-right amount-text font-semibold">₹{p.grandTotal.toLocaleString('en-IN')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Mobile cards */}
+              <div className="md:hidden space-y-3">
+                {purchases.map(p => (
+                  <div key={p.id} className="bg-card rounded-xl border p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-mono text-xs text-muted-foreground">{p.purchaseNumber}</span>
+                      <span className="text-xs text-muted-foreground">{new Date(p.purchaseDate).toLocaleDateString('en-IN')}</span>
+                    </div>
+                    <p className="font-medium mb-1">{p.supplierName}</p>
+                    {p.invoiceRef && <p className="text-xs text-muted-foreground mb-2">Ref: {p.invoiceRef}</p>}
+                    <div className="flex justify-between items-center pt-2 border-t text-sm">
+                      <span className="text-muted-foreground">{p.items.length} items</span>
+                      <span className="font-semibold amount-text">₹{p.grandTotal.toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
 
       {tab === 'new' && (
         <div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
             <div>
               <label className="input-label">Purchase #</label>
-              <input className="w-full px-3 py-2 rounded-lg border bg-muted text-sm amount-text" value={purchaseNumber} readOnly />
+              <input className="w-full px-3 py-2.5 rounded-lg border bg-muted text-sm amount-text" value={purchaseNumber} readOnly />
             </div>
             <div>
               <label className="input-label">Date</label>
-              <input type="date" className="w-full px-3 py-2 rounded-lg border bg-background text-sm" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
+              <input type="date" className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} />
             </div>
-            <div>
+            <div className="sm:col-span-2 lg:col-span-1">
               <label className="input-label">Supplier *</label>
-              <select className="w-full px-3 py-2 rounded-lg border bg-background text-sm" value={selectedSupplier?.id ?? ''}
+              <select className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm" value={selectedSupplier?.id ?? ''}
                 onChange={e => setSelectedSupplier(suppliers.find(s => s.id === Number(e.target.value)) ?? null)}>
                 <option value="">Select Supplier</option>
                 {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -248,10 +228,10 @@ export default function Purchases() {
           </div>
           <div className="mb-4">
             <label className="input-label">Supplier Invoice Ref</label>
-            <input className="w-full max-w-sm px-3 py-2 rounded-lg border bg-background text-sm" value={invoiceRef} onChange={e => setInvoiceRef(e.target.value)} />
+            <input className="w-full sm:max-w-sm px-3 py-2.5 rounded-lg border bg-background text-sm" value={invoiceRef} onChange={e => setInvoiceRef(e.target.value)} />
           </div>
 
-          <div className="relative mb-4 max-w-lg">
+          <div className="relative mb-4">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <input className="w-full pl-10 pr-4 py-2.5 rounded-lg border bg-card text-sm" placeholder="Search items to add..."
               value={itemSearch} onChange={e => { setItemSearch(e.target.value); setShowItemDD(true); }}
@@ -259,16 +239,17 @@ export default function Purchases() {
             {showItemDD && itemSearch && (
               <div className="absolute z-10 mt-1 w-full bg-card border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                 {filteredItems.map(i => (
-                  <button key={i.id} className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between" onClick={() => addItem(i)}>
-                    <span>{i.name} <span className="text-muted-foreground">({i.sku})</span></span>
-                    <span className="amount-text">₹{i.purchasePrice}</span>
+                  <button key={i.id} className="w-full text-left px-3 py-2.5 text-sm hover:bg-muted flex justify-between" onClick={() => addItem(i)}>
+                    <span className="truncate mr-2">{i.name} <span className="text-muted-foreground">({i.sku})</span></span>
+                    <span className="amount-text shrink-0">₹{i.purchasePrice}</span>
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          <div className="bg-card rounded-xl border overflow-hidden mb-6">
+          {/* Desktop table */}
+          <div className="hidden lg:block bg-card rounded-xl border overflow-hidden mb-6">
             <table className="w-full text-sm">
               <thead><tr className="border-b bg-muted/50">
                 <th className="text-left px-3 py-2">#</th>
@@ -299,10 +280,44 @@ export default function Purchases() {
             </table>
           </div>
 
+          {/* Mobile cards */}
+          <div className="lg:hidden space-y-3 mb-6">
+            {lineItems.length === 0 ? (
+              <div className="bg-card rounded-xl border p-6 text-center text-muted-foreground text-sm">No items. Search and add above.</div>
+            ) : lineItems.map((li, idx) => (
+              <div key={idx} className="bg-card rounded-xl border p-4">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{li.name}</p>
+                    <p className="text-xs text-muted-foreground">{li.sku} • GST {li.gstPercent}%</p>
+                  </div>
+                  <button onClick={() => setLineItems(p => p.filter((_, i) => i !== idx))} className="p-1 rounded hover:bg-destructive/10 text-destructive shrink-0">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Qty</label>
+                    <input type="number" min="1" className="w-full text-center px-2 py-1.5 rounded border bg-background text-sm amount-text"
+                      value={li.quantity} onChange={e => updateItem(idx, 'quantity', parseInt(e.target.value) || 1)} />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Price ₹</label>
+                    <input type="number" min="0" step="0.01" className="w-full text-center px-2 py-1.5 rounded border bg-background text-sm amount-text"
+                      value={li.purchasePrice} onChange={e => updateItem(idx, 'purchasePrice', parseFloat(e.target.value) || 0)} />
+                  </div>
+                </div>
+                <div className="flex justify-end mt-3 pt-3 border-t">
+                  <span className="font-semibold amount-text">₹{li.totalAmount.toFixed(2)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+
           {lineItems.length > 0 && (
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3">
               <p className="text-lg font-bold">Total: <span className="amount-text">₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></p>
-              <button onClick={handleSave} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
+              <button onClick={handleSave} className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90">
                 <Save className="w-4 h-4" /> Save Purchase
               </button>
             </div>
