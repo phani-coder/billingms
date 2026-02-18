@@ -205,7 +205,8 @@ ipcMain.handle("auth-logout", (event, { token }) => {
 // mechanism to force a change. Now must_change_password flag is checked on login
 // and enforced here.
 ipcMain.handle("auth-change-password", async (event, { token, currentPassword, newPassword }) => {
-  const session = requirePermission(token, null); // any logged-in user can change own password
+  const session = getSession(token);
+  if (!session) throw new Error("AUTH_REQUIRED: Session expired or invalid. Please log in."); // any logged-in user can change own password
   const bcrypt = require("bcryptjs");
   const db = getDB();
 
