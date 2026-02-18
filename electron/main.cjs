@@ -320,6 +320,63 @@ ipcMain.handle("delete-item", (event, { token, id }) => {
   return { success: true };
 });
 
+// ===================== CUSTOMERS IPC HANDLERS =====================
+
+ipcMain.handle("get-customers", (event, { token }) => {
+  requirePermission(token, "canManageCustomers");
+  const db = getDB();
+  return db.prepare("SELECT * FROM customers ORDER BY name ASC").all();
+});
+
+ipcMain.handle("add-customer", (event, { token, customer }) => {
+  requirePermission(token, "canManageCustomers");
+  const db = getDB();
+  try {
+    const result = db.prepare(`
+      INSERT INTO customers (name, phone, gst_number, address, email, state_code, is_walk_in)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      customer.name,
+      customer.phone || '',
+      customer.gstNumber || '',
+      customer.address || '',
+      customer.email || '',
+      customer.stateCode || '',
+      customer.isWalkIn ? 1 : 0
+    );
+    return { id: result.lastInsertRowid };
+  } catch (err) {
+    throw new Error("Failed to add customer: " + err.message);
+  }
+});
+
+ipcMain.handle("update-customer", (event, { token, customer }) => {
+  requirePermission(token, "canManageCustomers");
+  const db = getDB();
+  db.prepare(`
+    UPDATE customers SET
+      name = ?, phone = ?, gst_number = ?, address = ?, email = ?, state_code = ?, is_walk_in = ?
+    WHERE id = ?
+  `).run(
+    customer.name,
+    customer.phone || '',
+    customer.gstNumber || '',
+    customer.address || '',
+    customer.email || '',
+    customer.stateCode || '',
+    customer.isWalkIn ? 1 : 0,
+    customer.id
+  );
+  return { success: true };
+});
+
+ipcMain.handle("delete-customer", (event, { token, id }) => {
+  requirePermission(token, "canManageCustomers");
+  const db = getDB();
+  db.prepare("DELETE FROM customers WHERE id = ?").run(id);
+  return { success: true };
+});
+
 // ===================== BACKUP IPC HANDLER =====================
 
 ipcMain.handle("backup-db", async (event, { token }) => {

@@ -120,11 +120,27 @@ export default function ItemFormDialog({ item, onClose }: Props) {
           </div>
           <div>
             <label className="input-label">Purchase Price (₹) *</label>
-            <input type="number" min="0" step="0.01" className={`${inputClass} amount-text`} value={form.purchasePrice} onChange={e => set('purchasePrice', parseFloat(e.target.value) || 0)} />
+            <input 
+              type="number" 
+              min="0" 
+              step="0.01" 
+              className={`${inputClass} amount-text`} 
+              value={form.purchasePrice} 
+              onChange={e => set('purchasePrice', parseFloat(e.target.value) || 0)}
+              onFocus={e => e.target.select()}
+            />
           </div>
           <div>
             <label className="input-label">Selling Price (₹) *</label>
-            <input type="number" min="0" step="0.01" className={`${inputClass} amount-text`} value={form.sellingPrice} onChange={e => set('sellingPrice', parseFloat(e.target.value) || 0)} />
+            <input 
+              type="number" 
+              min="0" 
+              step="0.01" 
+              className={`${inputClass} amount-text`} 
+              value={form.sellingPrice} 
+              onChange={e => set('sellingPrice', parseFloat(e.target.value) || 0)}
+              onFocus={e => e.target.select()}
+            />
           </div>
           <div>
             <label className="input-label">GST %</label>
@@ -134,11 +150,25 @@ export default function ItemFormDialog({ item, onClose }: Props) {
           </div>
           <div>
             <label className="input-label">Current Stock</label>
-            <input type="number" min="0" className={`${inputClass} amount-text`} value={form.currentStock} onChange={e => set('currentStock', parseInt(e.target.value) || 0)} />
+            <input 
+              type="number" 
+              min="0" 
+              className={`${inputClass} amount-text`} 
+              value={form.currentStock} 
+              onChange={e => set('currentStock', parseInt(e.target.value) || 0)}
+              onFocus={e => e.target.select()}
+            />
           </div>
           <div>
             <label className="input-label">Min Stock Alert</label>
-            <input type="number" min="0" className={`${inputClass} amount-text`} value={form.minStockLevel} onChange={e => set('minStockLevel', parseInt(e.target.value) || 0)} />
+            <input 
+              type="number" 
+              min="0" 
+              className={`${inputClass} amount-text`} 
+              value={form.minStockLevel} 
+              onChange={e => set('minStockLevel', parseInt(e.target.value) || 0)}
+              onFocus={e => e.target.select()}
+            />
           </div>
         </div>
         <div className="flex flex-col-reverse sm:flex-row justify-end gap-2 sm:gap-3 px-4 sm:px-6 py-4 border-t sticky bottom-0 bg-card">

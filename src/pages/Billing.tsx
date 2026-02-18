@@ -1,10 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getNextInvoiceNumber, updateStockAfterSale, getSettings, validateStockForSale, invoiceNumberExists } from '@/db/database';
 import type { InventoryItem, Invoice, InvoiceItem, Customer } from '@/types';
 import { Search, Plus, Trash2, Printer, FileDown, Save, X } from 'lucide-react';
 import { toast } from 'sonner';
-import ItemFormDialog from '@/components/ItemFormDialog';
 import InvoicePrint from '@/components/InvoicePrint';
 import type { AppSettings } from '@/types';
 import { roundCurrency, calculateGst, sanitizeInput } from '@/lib/validation';
@@ -21,19 +19,36 @@ export default function Billing() {
   const [isIgst, setIsIgst] = useState(false);
   const [paymentMode, setPaymentMode] = useState<Invoice['paymentMode']>('cash');
   const [notes, setNotes] = useState('');
-  const [showAddItem, setShowAddItem] = useState(false);
   const [showPrint, setShowPrint] = useState(false);
   const [savedInvoice, setSavedInvoice] = useState<Invoice | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const itemSearchRef = useRef<HTMLInputElement>(null);
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
   const items = useLiveQuery(() => db.items.filter(i => i.isActive).toArray()) ?? [];
-  const customers = useLiveQuery(() => db.customers.toArray()) ?? [];
 
   useEffect(() => {
     getNextInvoiceNumber().then(setInvoiceNumber);
     getSettings().then(setSettings);
+    loadCustomers();
   }, []);
+
+ const loadCustomers = async () => {
+    if (window.api) {
+      try {
+        const data = await window.api.getCustomers();
+        setCustomers(data.map((c: any) => ({
+          ...c,
+          createdAt: new Date(c.created_at),
+          isWalkIn: c.is_walk_in === 1,
+          gstNumber: c.gst_number || '',
+          stateCode: c.state_code || '',
+        })));
+      } catch (err) {
+        console.error('Failed to load customers:', err);
+      }
+    }
+  };
 
   const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
@@ -272,18 +287,11 @@ export default function Billing() {
           onFocus={() => setShowItemDropdown(true)}
           onBlur={() => setTimeout(() => setShowItemDropdown(false), 200)}
         />
-        <button
-          onClick={() => setShowAddItem(true)}
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded bg-accent text-accent-foreground hover:opacity-80 text-xs font-medium flex items-center gap-1"
-        >
-          <Plus className="w-3 h-3" /> New
-        </button>
         {showItemDropdown && itemSearch && (
           <div className="absolute z-10 mt-1 w-full bg-card border rounded-lg shadow-lg max-h-60 overflow-y-auto">
             {filteredItems.length === 0 ? (
-              <div className="px-3 py-4 text-sm text-center text-muted-foreground">
-                No items found.{' '}
-                <button onClick={() => setShowAddItem(true)} className="text-primary underline">Add new</button>
+             <div className="px-3 py-4 text-sm text-center text-muted-foreground">
+                No items found. Add items from the Inventory page first.
               </div>
             ) : filteredItems.map(item => (
               <button key={item.id} className="w-full text-left px-3 py-2 text-sm hover:bg-muted flex justify-between items-center" onClick={() => addLineItem(item)}>
@@ -423,7 +431,6 @@ export default function Billing() {
         <textarea className="w-full px-3 py-2.5 rounded-lg border bg-background text-sm h-16 resize-none" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Any additional notes..." />
       </div>
 
-      {showAddItem && <ItemFormDialog item={null} onClose={() => setShowAddItem(false)} />}
     </div>
   );
 }

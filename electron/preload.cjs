@@ -45,6 +45,19 @@ contextBridge.exposeInMainWorld('api', {
   deleteItem: (id) =>
     ipcRenderer.invoke('delete-item', { token: getToken(), id }),
 
+  // ── CUSTOMERS ────────────────────────────────────────────────────────────
+  getCustomers: () =>
+    ipcRenderer.invoke('get-customers', { token: getToken() }),
+
+  addCustomer: (customer) =>
+    ipcRenderer.invoke('add-customer', { token: getToken(), customer }),
+
+  updateCustomer: (customer) =>
+    ipcRenderer.invoke('update-customer', { token: getToken(), customer }),
+
+  deleteCustomer: (id) =>
+    ipcRenderer.invoke('delete-customer', { token: getToken(), id }),
+
   // ── BACKUP ───────────────────────────────────────────────────────────────
   backupDb: () =>
     ipcRenderer.invoke('backup-db', { token: getToken() }),

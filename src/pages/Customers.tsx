@@ -1,6 +1,4 @@
-import { useState } from 'react';
-import { useLiveQuery } from 'dexie-react-hooks';
-import { db } from '@/db/database';
+import { useState, useEffect } from 'react';
 import type { Customer } from '@/types';
 import { Plus, Search, Edit2, Trash2, Users, Phone, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
@@ -11,10 +9,34 @@ export default function Customers() {
   const [showForm, setShowForm] = useState(false);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [form, setForm] = useState({ name: '', phone: '', gstNumber: '', address: '', email: '', isWalkIn: false });
+  const [customers, setCustomers] = useState<Customer[]>([]);
 
-  const customers = useLiveQuery(() => db.customers.toArray()) ?? [];
+  useEffect(() => {
+    loadCustomers();
+  }, []);
+
+  const loadCustomers = async () => {
+    if (window.api) {
+      try {
+        const data = await window.api.getCustomers();
+        setCustomers(data.map((c: any) => ({
+          ...c,
+          createdAt: new Date(c.created_at),
+          isWalkIn: c.is_walk_in === 1,
+          gstNumber: c.gst_number || '',
+          stateCode: c.state_code || '',
+        })));
+      } catch (err) {
+        toast.error('Failed to load customers');
+        console.error(err);
+      }
+    }
+  };
+
   const filtered = customers.filter(c =>
-    c.name.toLowerCase().includes(search.toLowerCase()) || c.phone.includes(search) || c.gstNumber.toLowerCase().includes(search.toLowerCase())
+    c.name.toLowerCase().includes(search.toLowerCase()) || 
+    c.phone.includes(search) || 
+    c.gstNumber.toLowerCase().includes(search.toLowerCase())
   );
 
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
@@ -35,34 +57,61 @@ export default function Customers() {
     if (form.email && !isValidEmail(form.email)) {
       return toast.error('Invalid email format');
     }
-    if (editCustomer?.id) {
-      await db.customers.update(editCustomer.id, { 
-        name: validatedData.name, phone: form.phone, gstNumber: form.gstNumber.toUpperCase(),
-        address: validatedData.address, email: form.email.toLowerCase(), isWalkIn: form.isWalkIn,
-      });
-      toast.success('Customer updated');
-    } else {
-      await db.customers.add({ 
-        name: validatedData.name, phone: form.phone, gstNumber: form.gstNumber.toUpperCase(),
-        address: validatedData.address, email: form.email.toLowerCase(), isWalkIn: form.isWalkIn,
-        createdAt: new Date() 
-      } as Customer);
-      toast.success('Customer added');
+
+    try {
+      const customerData = {
+        name: validatedData.name,
+        phone: form.phone,
+        gstNumber: form.gstNumber.toUpperCase(),
+        address: validatedData.address,
+        email: form.email.toLowerCase(),
+        isWalkIn: form.isWalkIn,
+        stateCode: form.gstNumber ? form.gstNumber.substring(0, 2) : '',
+      };
+
+      if (editCustomer?.id && window.api) {
+        await window.api.updateCustomer({ ...customerData, id: editCustomer.id });
+        toast.success('Customer updated');
+      } else if (window.api) {
+        await window.api.addCustomer(customerData);
+        toast.success('Customer added');
+      }
+
+      setShowForm(false);
+      setEditCustomer(null);
+      setForm({ name: '', phone: '', gstNumber: '', address: '', email: '', isWalkIn: false });
+      loadCustomers();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to save customer');
+      console.error(err);
     }
-    setShowForm(false); setEditCustomer(null);
-    setForm({ name: '', phone: '', gstNumber: '', address: '', email: '', isWalkIn: false });
   };
 
   const handleEdit = (c: Customer) => {
     setEditCustomer(c);
-    setForm({ name: c.name, phone: c.phone, gstNumber: c.gstNumber, address: c.address, email: c.email, isWalkIn: c.isWalkIn });
+    setForm({ 
+      name: c.name, 
+      phone: c.phone, 
+      gstNumber: c.gstNumber, 
+      address: c.address, 
+      email: c.email, 
+      isWalkIn: c.isWalkIn 
+    });
     setShowForm(true);
   };
 
   const handleDelete = async (c: Customer) => {
     if (!confirm(`Delete customer "${c.name}"?`)) return;
-    await db.customers.delete(c.id!);
-    toast.success('Customer deleted');
+    try {
+      if (window.api && c.id) {
+        await window.api.deleteCustomer(c.id);
+        toast.success('Customer deleted');
+        loadCustomers();
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to delete customer');
+      console.error(err);
+    }
   };
 
   return (
@@ -72,7 +121,11 @@ export default function Customers() {
           <h1 className="page-title">Customers</h1>
           <p className="text-sm text-muted-foreground">{customers.length} customers</p>
         </div>
-        <button onClick={() => { setEditCustomer(null); setForm({ name: '', phone: '', gstNumber: '', address: '', email: '', isWalkIn: false }); setShowForm(true); }}
+        <button onClick={() => { 
+          setEditCustomer(null); 
+          setForm({ name: '', phone: '', gstNumber: '', address: '', email: '', isWalkIn: false }); 
+          setShowForm(true); 
+        }}
           className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-primary text-primary-foreground font-semibold hover:opacity-90 text-sm">
           <Plus className="w-4 h-4" /> Add Customer
         </button>
