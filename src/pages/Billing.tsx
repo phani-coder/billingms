@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useLiveQuery } from 'dexie-react-hooks';
 import { db, getNextInvoiceNumber, updateStockAfterSale, getSettings, validateStockForSale, invoiceNumberExists } from '@/db/database';
 import type { InventoryItem, Invoice, InvoiceItem, Customer } from '@/types';
 import { Search, Plus, Trash2, Printer, FileDown, Save, X } from 'lucide-react';
@@ -17,6 +18,7 @@ export default function Billing() {
   const [showItemDropdown, setShowItemDropdown] = useState(false);
   const [lineItems, setLineItems] = useState<InvoiceItem[]>([]);
   const [isIgst, setIsIgst] = useState(false);
+  const [enableGst, setEnableGst] = useState(true);
   const [paymentMode, setPaymentMode] = useState<Invoice['paymentMode']>('cash');
   const [notes, setNotes] = useState('');
   const [showPrint, setShowPrint] = useState(false);
@@ -24,16 +26,50 @@ export default function Billing() {
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const itemSearchRef = useRef<HTMLInputElement>(null);
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [items, setItems] = useState<InventoryItem[]>([]);
 
-  const items = useLiveQuery(() => db.items.filter(i => i.isActive).toArray()) ?? [];
+  // Warn user before leaving if invoice has unsaved items
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (lineItems.length > 0) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [lineItems]);
 
   useEffect(() => {
     getNextInvoiceNumber().then(setInvoiceNumber);
     getSettings().then(setSettings);
     loadCustomers();
+    loadItems();
   }, []);
 
- const loadCustomers = async () => {
+  const loadItems = async () => {
+    if (window.api) {
+      try {
+        const data = await window.api.getItems();
+        setItems(data.map((item: any) => ({
+          ...item,
+          createdAt: new Date(item.created_at),
+          updatedAt: new Date(item.updated_at),
+          isActive: item.is_active === 1,
+          hsnCode: item.hsn_code || '',
+          purchasePrice: item.purchase_price,
+          sellingPrice: item.selling_price,
+          gstPercent: item.gst_percent,
+          currentStock: item.current_stock,
+          minStockLevel: item.min_stock_level,
+        })));
+      } catch (err) {
+        console.error('Failed to load items:', err);
+      }
+    }
+  };
+
+  const loadCustomers = async () => {
     if (window.api) {
       try {
         const data = await window.api.getCustomers();
@@ -69,7 +105,9 @@ export default function Billing() {
       updateLineItem(lineItems.indexOf(existing), 'quantity', existing.quantity + 1);
     } else {
       const taxableAmount = roundCurrency(item.sellingPrice);
-      const { cgst, sgst, igst } = calculateGst(taxableAmount, item.gstPercent, isIgst);
+      const { cgst, sgst, igst } = enableGst 
+        ? calculateGst(taxableAmount, item.gstPercent, isIgst)
+        : { cgst: 0, sgst: 0, igst: 0 };
       const newItem: InvoiceItem = {
         itemId: item.id!,
         name: item.name,
@@ -94,12 +132,14 @@ export default function Billing() {
     if (field === 'quantity') value = Math.max(1, Math.min(99999, Math.floor(value)));
     if (field === 'discount') value = Math.max(0, Math.min(99999999, value));
     if (field === 'price') value = Math.max(0, Math.min(99999999, value));
-    
+
     setLineItems(prev => {
       const updated = [...prev];
       const item = { ...updated[index], [field]: value };
       const taxableAmount = roundCurrency((item.price - item.discount) * item.quantity);
-      const { cgst, sgst, igst } = calculateGst(taxableAmount, item.gstPercent, isIgst);
+      const { cgst, sgst, igst } = enableGst 
+        ? calculateGst(taxableAmount, item.gstPercent, isIgst)
+        : { cgst: 0, sgst: 0, igst: 0 };
       item.taxableAmount = taxableAmount;
       item.cgst = cgst; item.sgst = sgst; item.igst = igst;
       item.totalAmount = roundCurrency(taxableAmount + cgst + sgst + igst);
@@ -262,10 +302,16 @@ export default function Billing() {
       </div>
 
       <div className="flex flex-wrap gap-4 mb-4">
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={isIgst} onChange={e => setIsIgst(e.target.checked)} className="rounded" />
-          Interstate (IGST)
+        <label className="flex items-center gap-2 text-sm font-medium px-3 py-2 bg-card border rounded-lg">
+          <input type="checkbox" checked={enableGst} onChange={e => setEnableGst(e.target.checked)} className="rounded" />
+          Enable GST
         </label>
+        {enableGst && (
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={isIgst} onChange={e => setIsIgst(e.target.checked)} className="rounded" />
+            Interstate (IGST)
+          </label>
+        )}
         <select className="px-3 py-1.5 rounded-lg border bg-background text-sm" value={paymentMode} onChange={e => setPaymentMode(e.target.value as Invoice['paymentMode'])}>
           <option value="cash">Cash</option>
           <option value="upi">UPI</option>
@@ -290,7 +336,7 @@ export default function Billing() {
         {showItemDropdown && itemSearch && (
           <div className="absolute z-10 mt-1 w-full bg-card border rounded-lg shadow-lg max-h-60 overflow-y-auto">
             {filteredItems.length === 0 ? (
-             <div className="px-3 py-4 text-sm text-center text-muted-foreground">
+              <div className="px-3 py-4 text-sm text-center text-muted-foreground">
                 No items found. Add items from the Inventory page first.
               </div>
             ) : filteredItems.map(item => (
@@ -348,9 +394,11 @@ export default function Billing() {
                 </td>
                 <td className="px-3 py-2 text-right amount-text">{li.gstPercent}%</td>
                 <td className="px-3 py-2 text-right amount-text text-xs">
-                  {isIgst ? `IGST: ₹${(li.igst * li.quantity).toFixed(2)}` : (
-                    <>{`C: ₹${(li.cgst * li.quantity).toFixed(2)}`}<br />{`S: ₹${(li.sgst * li.quantity).toFixed(2)}`}</>
-                  )}
+                  {enableGst ? (
+                    isIgst ? `IGST: ₹${(li.igst * li.quantity).toFixed(2)}` : (
+                      <>{`C: ₹${(li.cgst * li.quantity).toFixed(2)}`}<br />{`S: ₹${(li.sgst * li.quantity).toFixed(2)}`}</>
+                    )
+                  ) : '₹0.00'}
                 </td>
                 <td className="px-3 py-2 text-right amount-text font-semibold">₹{li.totalAmount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                 <td className="px-3 py-2">
@@ -411,13 +459,15 @@ export default function Billing() {
           <div className="bg-card rounded-xl border p-5 w-full sm:max-w-sm space-y-2">
             <div className="flex justify-between text-sm"><span>Subtotal</span><span className="amount-text">₹{subtotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span></div>
             {totalDiscount > 0 && <div className="flex justify-between text-sm text-success"><span>Discount</span><span className="amount-text">-₹{totalDiscount.toFixed(2)}</span></div>}
-            {isIgst ? (
-              <div className="flex justify-between text-sm"><span>IGST</span><span className="amount-text">₹{totalIgst.toFixed(2)}</span></div>
-            ) : (
-              <>
-                <div className="flex justify-between text-sm"><span>CGST</span><span className="amount-text">₹{totalCgst.toFixed(2)}</span></div>
-                <div className="flex justify-between text-sm"><span>SGST</span><span className="amount-text">₹{totalSgst.toFixed(2)}</span></div>
-              </>
+            {enableGst && (
+              isIgst ? (
+                <div className="flex justify-between text-sm"><span>IGST</span><span className="amount-text">₹{totalIgst.toFixed(2)}</span></div>
+              ) : (
+                <>
+                  <div className="flex justify-between text-sm"><span>CGST</span><span className="amount-text">₹{totalCgst.toFixed(2)}</span></div>
+                  <div className="flex justify-between text-sm"><span>SGST</span><span className="amount-text">₹{totalSgst.toFixed(2)}</span></div>
+                </>
+              )
             )}
             {roundOff !== 0 && <div className="flex justify-between text-sm text-muted-foreground"><span>Round Off</span><span className="amount-text">{roundOff > 0 ? '+' : ''}₹{roundOff.toFixed(2)}</span></div>}
             <div className="flex justify-between text-lg font-bold border-t pt-2"><span>Grand Total</span><span className="amount-text">₹{grandTotal.toLocaleString('en-IN')}</span></div>
