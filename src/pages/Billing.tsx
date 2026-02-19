@@ -153,9 +153,9 @@ export default function Billing() {
   };
 
   const subtotal = lineItems.reduce((s, i) => s + i.taxableAmount, 0);
-  const totalCgst = lineItems.reduce((s, i) => s + i.cgst * i.quantity, 0);
-  const totalSgst = lineItems.reduce((s, i) => s + i.sgst * i.quantity, 0);
-  const totalIgst = lineItems.reduce((s, i) => s + i.igst * i.quantity, 0);
+  const totalCgst = lineItems.reduce((s, i) => s + i.cgst, 0);
+  const totalSgst = lineItems.reduce((s, i) => s + i.sgst, 0);
+  const totalIgst = lineItems.reduce((s, i) => s + i.igst, 0);
   const totalDiscount = lineItems.reduce((s, i) => s + i.discount * i.quantity, 0);
   const rawTotal = subtotal + totalCgst + totalSgst + totalIgst;
   const roundOff = Math.round(rawTotal) - rawTotal;
@@ -240,7 +240,7 @@ export default function Billing() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [lineItems]);
+  }, [lineItems, handleSave]);
 
   if (showPrint && savedInvoice && settings) {
     return <InvoicePrint invoice={savedInvoice} settings={settings} onBack={() => setShowPrint(false)} onNew={handleNewInvoice} />;
