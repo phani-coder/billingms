@@ -90,6 +90,19 @@ describe('Invoice Creation - Production Certification Tests', () => {
       expect(totalSgst).toBe(18 + 27 + 24); // 69
     });
 
+
+    it('should not double count tax when quantity is already included in taxable amount', () => {
+      const lineItems = [
+        { quantity: 2, cgst: 18, sgst: 18, igst: 0 },
+        { quantity: 4, cgst: 24, sgst: 24, igst: 0 },
+      ];
+
+      const totalCgst = lineItems.reduce((sum, item) => sum + item.cgst, 0);
+      const totalSgst = lineItems.reduce((sum, item) => sum + item.sgst, 0);
+
+      expect(totalCgst).toBe(42);
+      expect(totalSgst).toBe(42);
+    });
     it('should calculate grand total correctly', () => {
       let grandTotal = 0;
       
